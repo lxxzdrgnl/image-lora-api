@@ -1,0 +1,13 @@
+torch
+torchvision
+diffusers
+transformers
+accelerate
+safetensors
+bitsandbytes
+Pillow
+datasets
+peft
+numpy
+tqdm
+matplotlib
