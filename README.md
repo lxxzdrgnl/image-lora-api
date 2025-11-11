@@ -120,15 +120,23 @@ python inference.py --lora_path my_lora_model_epoch50
 
 ```
 lora/
+├── .git/                 # Git 저장소 파일
+├── .gitignore            # Git 무시 파일
+├── core/                 # 학습, 생성, 전처리를 위한 핵심 모듈
+│   ├── __init__.py
+│   ├── config.py         # 설정 파일
+│   ├── generate.py       # 이미지 생성 로직
+│   ├── preprocess.py     # 데이터셋 전처리 로직
+│   └── train.py          # 학습 로직
 ├── dataset/              # 원본 데이터셋 (만화 스크린샷)
 ├── dataset_clean/        # 전처리된 데이터셋 (자동 생성)
+├── generate.py           # 이미지 생성을 위한 메인 스크립트
 ├── outputs/              # 생성된 이미지
-├── my_lora_model/        # 학습된 LoRA 모델
-├── train.py              # 학습 스크립트 (전처리 포함)
-├── inference.py          # 추론 스크립트
-├── preprocess_dataset.py # 전처리 모듈
-├── requirement.txt       # 의존성
-└── README.md
+├── my_lora_model/        # 학습된 LoRA 모델 (예: my_lora_model_epoch100)
+├── README.md             # 프로젝트 README 파일
+├── requirements.txt      # Python 의존성
+├── train.py              # 학습을 위한 메인 스크립트 (전처리 포함)
+└── venv/                 # Python 가상 환경
 ```
 
 ## 전처리 동작 방식

@@ -34,8 +34,8 @@ def main():
     parser.add_argument(
         "--prompt",
         type=str,
-        default="sks, portrait, high quality",
-        help="이미지 생성 프롬프트 (sks 필수!)"
+        default="portrait, high quality",
+        help="이미지 생성 프롬프트 ('sks'는 자동으로 추가됩니다)"
     )
     parser.add_argument(
         "--negative_prompt",
@@ -79,6 +79,10 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # 'sks' 트리거 단어 자동 추가
+    if "sks" not in args.prompt.lower():
+        args.prompt = "sks, " + args.prompt
 
     # LoRA 모델 존재 확인
     if not os.path.exists(args.lora_path):
