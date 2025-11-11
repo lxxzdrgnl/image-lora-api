@@ -10,7 +10,8 @@ from dataclasses import dataclass
 class TrainingConfig:
     """학습 설정"""
     # 환경
-    model_id: str = "andite/anything-v5.0"
+    device: str = "cuda" if torch.cuda.is_available() else "cpu"
+    model_id: str = "stablediffusionapi/anything-v5"
     raw_dataset_path: str = "./dataset"
     clean_dataset_path: str = "./dataset_clean"
     image_size: int = 512
@@ -46,7 +47,7 @@ class TrainingConfig:
 @dataclass
 class InferenceConfig:
     """추론 설정"""
-    model_id: str = "andite/anything-v5.0"
+    model_id: str = "stablediffusionapi/anything-v5"
     lora_path: str = "my_lora_model"
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 

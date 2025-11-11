@@ -4,9 +4,11 @@ LoRA 학습 및 이미지 생성을 위한 API
 """
 
 import os
+from threading import Lock
 from fastapi import FastAPI, BackgroundTasks, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from typing import Optional, List, Union
 
@@ -16,16 +18,40 @@ from core.generate import generate_images
 
 app = FastAPI(
     title="LoRA Training and Inference API",
-    description="LoRA 모델 학습 및 이미지 생성을 위한 API 서버입니다.",
+    description="""
+LoRA 모델 학습 및 이미지 생성을 위한 RESTful API 서버입니다.
+
+## 주요 기능
+- **학습**: 백그라운드에서 비동기 LoRA 모델 학습
+- **이미지 생성**: 학습된 모델로 프롬프트 기반 이미지 생성
+- **정적 파일 서빙**: 생성된 이미지를 `/static/` 경로로 제공
+- **CORS 지원**: Vue.js 등 프론트엔드에서 직접 접근 가능
+
+## 이미지 저장 및 접근
+- 생성된 이미지는 `outputs/` 폴더에 저장됩니다
+- 브라우저에서 `http://localhost:8000/static/이미지명.png` 로 직접 접근 가능
+- CORS가 설정되어 있어 다른 도메인에서도 이미지 로드 가능
+    """,
     version="1.0.0",
+)
+
+# CORS 설정 - Vue에서 API 및 정적 파일 접근 허용
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://localhost:3000"],  # Vue 개발 서버
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # --- 정적 파일 마운트 ---
 # 'outputs' 디렉토리를 '/static' 경로에 마운트하여 이미지 URL로 접근 가능하게 합니다.
+os.makedirs("outputs", exist_ok=True)
 app.mount("/static", StaticFiles(directory="outputs"), name="static")
 
 # --- 모델 및 상태 관리 ---
 training_status = {"is_training": False, "message": "Not training"}
+training_lock = Lock()
 
 # --- Pydantic 모델 정의 ---
 
@@ -53,7 +79,7 @@ class TrainStatusResponse(BaseModel):
     message: str
 
 class GenerateResponse(BaseModel):
-    image_url: str
+    image_urls: List[str]
 
 class VErrorLocation(BaseModel):
     loc: List[Union[str, int]]
@@ -68,7 +94,7 @@ class ValidationErrorResponse(BaseModel):
 def run_training_task(req: TrainRequest):
     """백그라운드에서 학습을 실행하는 함수"""
     global training_status
-    training_status = {"is_training": True, "message": "Training in progress..."}
+    training_status["message"] = "Training in progress..."
     try:
         config = TrainingConfig(
             raw_dataset_path=req.raw_dataset_path,
@@ -133,12 +159,14 @@ async def start_training(req: TrainRequest, background_tasks: BackgroundTasks):
     - 학습은 백그라운드에서 실행되며, 완료까지 시간이 소요될 수 있습니다.
     - 학습 진행 상태는 `/train/status` 엔드포인트로 확인할 수 있습니다.
     """
-    if training_status["is_training"]:
-        return JSONResponse(
-            status_code=400,
-            content={"message": "Training is already in progress."}
-        )
-    
+    with training_lock:
+        if training_status["is_training"]:
+            return JSONResponse(
+                status_code=400,
+                content={"message": "Training is already in progress."}
+            )
+        training_status["is_training"] = True
+
     background_tasks.add_task(run_training_task, req)
     return {"message": "Training started in the background. Check /train/status for progress."}
 
@@ -187,7 +215,7 @@ def get_training_status():
             "description": "성공적으로 이미지가 생성되었을 때의 응답입니다.",
             "content": {
                 "application/json": {
-                    "example": {"image_url": "http://127.0.0.1:8000/static/20251111_123456_1.png"}
+                    "example": {"image_urls": ["http://127.0.0.1:8000/static/20251111_123456_1.png", "http://127.0.0.1:8000/static/20251111_123456_2.png"]}
                 }
             },
         },
@@ -230,8 +258,12 @@ def get_training_status():
 )
 async def generate_image_api(request: Request, req: GenerateRequest):
     """
-    프롬프트를 기반으로 이미지를 생성하고, 생성된 이미지의 URL을 반환합니다.
-    - `lora_path`에 지정된 모델이 존재해야 합니다.
+    프롬프트를 기반으로 이미지를 생성하고, 생성된 이미지의 URL 목록을 반환합니다.
+
+    - 생성된 이미지는 `outputs/` 폴더에 저장됩니다
+    - 반환된 URL은 `/static/` 경로를 통해 브라우저에서 직접 접근 가능합니다
+    - `num_images` 파라미터로 여러 이미지를 동시에 생성할 수 있습니다
+    - `lora_path`에 지정된 모델이 존재해야 합니다
     """
     if not os.path.exists(req.lora_path):
         return JSONResponse(
@@ -260,12 +292,13 @@ async def generate_image_api(request: Request, req: GenerateRequest):
                 status_code=500,
                 content={"message": "Image generation failed."}
             )
-        
-        image_path = generated_files[0]
-        image_filename = os.path.basename(image_path)
-        image_url = f"{request.base_url}static/{image_filename}"
-        
-        return {"image_url": image_url}
+
+        image_urls = [
+            f"{request.base_url}static/{os.path.basename(path)}"
+            for path in generated_files
+        ]
+
+        return {"image_urls": image_urls}
 
     except Exception as e:
         return JSONResponse(
